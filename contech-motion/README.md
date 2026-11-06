@@ -24,6 +24,48 @@ The source recording lasts approximately 305 seconds; this plot shows the reques
 | Highest individual comparison score | 0.424440 |
 | Valid frame comparisons | 1,497 |
 
+## Smoothing comparison
+
+After calibrating the one-second scores, we tested two weighted averages to reduce rapid fluctuations while preserving the raw data:
+
+| Version | Weights across consecutive seconds | Look-ahead |
+| --- | --- | ---: |
+| Unsmoothed | Current score | 0 seconds |
+| Gentle | `[1, 2, 1] / 4` | 1 second |
+| Stronger | `[1, 2, 3, 2, 1] / 9` | 2 seconds |
+
+- **[View the smoothing comparison plot](results/5min-smoothing-comparison.png)** on GitHub.
+- **[Download the interactive smoothing HTML](results/5min-smoothing-comparison.html)** and open it in a browser. Select any of the five calibration mappings and toggle the unsmoothed, gentle, and stronger curves. The page also downloads the complete comparison results as JSON.
+
+![Smoothing comparison on the baseline video](results/5min-smoothing-comparison.png)
+
+For the 35% calibration candidate:
+
+| Version | Average one-second score | Peak one-second score | Reduction in average absolute second-to-second change |
+| --- | ---: | ---: | ---: |
+| Unsmoothed | 0.4100 | 1.0000 | 0% |
+| Gentle | 0.4100 | 0.9902 | 47.2% |
+| Stronger | 0.4099 | 0.9645 | 60.9% |
+
+Here, averages weight each displayed one-second bucket equally. Earlier whole-clip statistics weight individual comparisons equally, so they differ slightly because the first bucket has only two valid comparisons.
+
+The smoothing stage operates after calibration. It does not modify detection, normalize each recording, or replace raw measurements. Gentle smoothing is the first candidate to review; stronger smoothing softens brief peaks more.
+
+The plot uses actual seconds 300 and 301 as future context rather than extrapolating the end of the displayed 0–300s interval. At the recording start, the first available value is repeated as left context. The first bucket still uses only its valid samples; the initial 0.6s is unscored.
+
+Reusable implementation: [smoothing.py](smoothing.py).
+
+```python
+from smoothing import smooth_scores, GENTLE, STRONGER
+
+gentle = smooth_scores(one_second_scores, GENTLE)
+stronger = smooth_scores(one_second_scores, STRONGER)
+```
+
+Supply neighboring scores when processing chunks, then trim the context. The helper preserves `None`/`NaN` gaps and smooths each continuous run independently, without bridging unavailable footage. Repeating edge values is appropriate only at true run boundaries, not at every upload boundary.
+
+Checks cover constant and zero inputs, gap preservation, 0–1 bounds, input preservation, the exact three-point impulse response, chunk equivalence with context, agreement with the original measurements, and JavaScript syntax. These are presentation experiments; the detector defaults remain unchanged.
+
 ## Calibration comparison on the baseline videos
 
 The original graph underuses the 0–1 scale. This experiment keeps detection and the noise floor unchanged, then compares fixed score mappings on the first 300 seconds of `5min.mp4`. All four recordings in this folder are our calibration baselines.
@@ -138,15 +180,20 @@ Evaluate more parked-but-vibrating, windy, travelling, nighttime, and slow-actio
 ```text
 contech-motion/
 ├── README.md
+├── smoothing.py
 ├── 5min.mp4
 ├── digging-1.mp4
 ├── standing-1.mp4
 ├── standing-2.mp4
 └── results/
     ├── 5min-motion.png
-    └── 5min-motion.html
+    ├── 5min-motion.html
+    ├── 5min-calibration-comparison.png
+    ├── 5min-calibration-comparison.html
+    ├── 5min-smoothing-comparison.png
+    └── 5min-smoothing-comparison.html
 ```
 
-The files currently committed here are input recordings and plot exports. The Python analysis and plotting code was run during the experiment; it is not yet packaged as a runnable application in this folder. There is no deployed Lambda service in this repository.
+The files currently committed here are input recordings, plot exports, and a reusable NumPy smoothing helper. The Python analysis and plotting code was run during the experiment; it is not yet packaged as a runnable application in this folder. There is no deployed Lambda service in this repository.
 
 The analysis used NumPy and OpenCV; plot generation used Matplotlib. Processing the approximately five-minute source took **6.76 seconds in the development environment**, including decoding. This excludes download time and is not an AWS Lambda benchmark or cost estimate.

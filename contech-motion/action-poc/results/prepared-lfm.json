@@ -1,0 +1,175 @@
+{
+  "poc_version": "1.0",
+  "label_version": "construction-actions-poc-1",
+  "model_id": "LiquidAI/LFM3-VL-2B",
+  "model_revision": "71d8e745d97c224984e0f20412f532a5ce9dfd3e",
+  "device": "auto",
+  "python": "3.12.14",
+  "label_set": "basic",
+  "criteria": {
+    "standing_still": "The vehicle stays in place and its working attachment performs no meaningful operation. Ignore small vibration, wind, shadows or foliage motion.",
+    "driving": "The vehicle itself travels across the site; consistent changing viewpoint or background parallax shows translation. Boom or bucket movement alone is not driving.",
+    "digging": "The bucket or tool visibly engages soil/material to excavate, scrape or scoop. Mere movement of an empty attachment is not enough.",
+    "other": "The action is unclear, outside these categories, or mixed with no single dominant action."
+  },
+  "state": "A chronological silent POV video from a camera mounted on construction equipment. Classify only the observable action over the clip. Do not infer activity merely from the equipment being an excavator. Text overlays and surrounding foliage are not evidence of work. If evidence is insufficient, choose other.",
+  "instructions": "Which option best describes the dominant observable activity over this clip?",
+  "order_reversed": false,
+  "execution_status": "prepared_only_no_model_inference",
+  "score_note": "Option scores are conditional model outputs, not calibrated accuracy probabilities.",
+  "results": [
+    {
+      "file": "standing-1.mp4",
+      "input": {
+        "source_sha256": "0a5b94b0de732bb67f1b9e9fdc1268d62ed0868d62ccb0ad68214e70c9cd44f8",
+        "duration_seconds": 15.0,
+        "source_fps": 25.0,
+        "source_dimensions": [
+          640,
+          480
+        ],
+        "sampled_frame_count": 30,
+        "sample_times_seconds": [
+          0.0,
+          0.52,
+          1.04,
+          1.56,
+          2.08,
+          2.56,
+          3.08,
+          3.6,
+          4.12,
+          4.64,
+          5.16,
+          5.68,
+          6.2,
+          6.72,
+          7.24,
+          7.72,
+          8.24,
+          8.76,
+          9.28,
+          9.8,
+          10.32,
+          10.84,
+          11.36,
+          11.88,
+          12.4,
+          12.88,
+          13.4,
+          13.92,
+          14.44,
+          14.96
+        ],
+        "prepared_frame_dimensions": [
+          512,
+          384
+        ]
+      },
+      "status": "prepared_only",
+      "label": null
+    },
+    {
+      "file": "standing-2.mp4",
+      "input": {
+        "source_sha256": "eeb2aaf4291ee46668068ff0e7cae4940410028376ac233528fc53f18bb05909",
+        "duration_seconds": 15.0,
+        "source_fps": 25.0,
+        "source_dimensions": [
+          640,
+          480
+        ],
+        "sampled_frame_count": 30,
+        "sample_times_seconds": [
+          0.0,
+          0.52,
+          1.04,
+          1.56,
+          2.08,
+          2.56,
+          3.08,
+          3.6,
+          4.12,
+          4.64,
+          5.16,
+          5.68,
+          6.2,
+          6.72,
+          7.24,
+          7.72,
+          8.24,
+          8.76,
+          9.28,
+          9.8,
+          10.32,
+          10.84,
+          11.36,
+          11.88,
+          12.4,
+          12.88,
+          13.4,
+          13.92,
+          14.44,
+          14.96
+        ],
+        "prepared_frame_dimensions": [
+          512,
+          384
+        ]
+      },
+      "status": "prepared_only",
+      "label": null
+    },
+    {
+      "file": "digging-1.mp4",
+      "input": {
+        "source_sha256": "f5ada146f0d47b3f50fcf30fc3f98125ed9dd7e98a246e928de2bf9137aefa3c",
+        "duration_seconds": 15.0,
+        "source_fps": 25.0,
+        "source_dimensions": [
+          640,
+          480
+        ],
+        "sampled_frame_count": 30,
+        "sample_times_seconds": [
+          0.0,
+          0.52,
+          1.04,
+          1.56,
+          2.08,
+          2.56,
+          3.08,
+          3.6,
+          4.12,
+          4.64,
+          5.16,
+          5.68,
+          6.2,
+          6.72,
+          7.24,
+          7.72,
+          8.24,
+          8.76,
+          9.28,
+          9.8,
+          10.32,
+          10.84,
+          11.36,
+          11.88,
+          12.4,
+          12.88,
+          13.4,
+          13.92,
+          14.44,
+          14.96
+        ],
+        "prepared_frame_dimensions": [
+          512,
+          384
+        ]
+      },
+      "status": "prepared_only",
+      "label": null
+    }
+  ]
+}

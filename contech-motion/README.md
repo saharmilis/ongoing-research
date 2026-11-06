@@ -231,3 +231,9 @@ These recordings are calibration baselines. They establish repeatability of the 
 For Lambda, package the pinned analysis dependencies for the chosen runtime/architecture, download to temporary storage, call `analyze_video`, and persist results to S3 or your backend. A bare return value from an asynchronously S3-triggered Lambda is not result delivery. AWS packaging, IAM, orchestration, deployment, and an AWS throughput/cost benchmark remain integration work for the platform team.
 
 This measures visual change, not construction productivity or a named action. Travel, rotation, shadows, wind, rain, dust, and vibration may contribute. Small or slow true movement may be suppressed. Uniform brightness correction and grayscale each discard some information. Viewpoint and texture affect the score. Identical frames alone cannot distinguish a frozen camera from a still scene.
+
+## Next experiment: finite-label action classification
+
+The separate [action classification POC](action-poc/README.md) tests d3-nano and LFM3-VL-2B on the three original clips. It starts with Standing Still, Driving, Digging, and Other, with an optional expanded label set. It does not alter this finalized motion pipeline.
+
+The POC includes model-card-based adapters, pinned model revisions, preparation tests, separate dependency files, and GPU run commands. Model predictions remain pending execution with accessible weights; the preparation reports are not classification results.

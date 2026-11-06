@@ -1,0 +1,9 @@
+-r ../requirements.txt
+transformers==5.17.0
+torch>=2.8
+torchvision
+accelerate>=1.10
+safetensors>=0.6
+huggingface_hub>=1.0
+einops
+pillow>=10

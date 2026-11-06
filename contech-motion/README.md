@@ -24,6 +24,29 @@ The source recording lasts approximately 305 seconds; this plot shows the reques
 | Highest individual comparison score | 0.424440 |
 | Valid frame comparisons | 1,497 |
 
+## Selected smooth calibration on the original 15-second videos
+
+The lowest panel in the five-minute comparison uses the **smooth calibration curve**. We applied those same fixed parameters to fresh runs of `standing-1.mp4`, `standing-2.mp4`, and `digging-1.mp4`.
+
+![Selected smooth calibration on standing and digging baseline videos](results/15sec-smooth-baselines.png)
+
+- **[View the three-video plot](results/15sec-smooth-baselines.png)** directly on GitHub.
+- **[Download the HTML review](results/15sec-smooth-baselines.html)** and open it in a browser. It includes the plot, summary table, and a button to download the complete JSON with original measurements, calibrated samples, and smoothed per-second scores.
+
+The calibration is `1.15 * s / (s + 0.15)`, where `s = clip((A - 0.01) / 0.99, 0, 1)` and `A` is filtered changed-area fraction. All original detector parameters remain fixed. Calibration is applied to each comparison before one-second averaging.
+
+Three curves are shown for every video: unsmoothed, gentle `[1,2,1]/4`, and stronger `[1,2,3,2,1]/9`. There is no separate tuning or normalization for each clip.
+
+| Video | Calibrated mean over comparisons | Gentle peak second | Stronger minimum second | Stronger peak second |
+| --- | ---: | ---: | ---: | ---: |
+| Standing 1 | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
+| Standing 2 | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
+| Digging 1 | 0.6659 | 0.8369 | 0.5253 | 0.8373 |
+
+The three standing curves overlap exactly at zero. The initial 0.6 seconds is unscored; the first bucket has two valid comparisons. These standalone clips have no neighboring context, so temporal smoothing repeats the edge score at each true clip boundary. In the longer five-minute experiment, actual future footage supplies the context beyond the displayed 300-second boundary.
+
+Means over individual comparisons and means over displayed seconds differ slightly because the first second contains fewer comparisons. The JSON and HTML distinguish those statistics explicitly. The original 15-second detection outputs reproduced the previous calibration experiment.
+
 ## Smoothing comparison
 
 After calibrating the one-second scores, we tested two weighted averages to reduce rapid fluctuations while preserving the raw data:
@@ -191,7 +214,9 @@ contech-motion/
     ├── 5min-calibration-comparison.png
     ├── 5min-calibration-comparison.html
     ├── 5min-smoothing-comparison.png
-    └── 5min-smoothing-comparison.html
+    ├── 5min-smoothing-comparison.html
+    ├── 15sec-smooth-baselines.png
+    └── 15sec-smooth-baselines.html
 ```
 
 The files currently committed here are input recordings, plot exports, and a reusable NumPy smoothing helper. The Python analysis and plotting code was run during the experiment; it is not yet packaged as a runnable application in this folder. There is no deployed Lambda service in this repository.

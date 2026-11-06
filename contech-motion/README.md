@@ -24,6 +24,43 @@ The source recording lasts approximately 305 seconds; this plot shows the reques
 | Highest individual comparison score | 0.424440 |
 | Valid frame comparisons | 1,497 |
 
+## Calibration comparison on the baseline videos
+
+The original graph underuses the 0–1 scale. This experiment keeps detection and the noise floor unchanged, then compares fixed score mappings on the first 300 seconds of `5min.mp4`. All four recordings in this folder are our calibration baselines.
+
+![Fixed calibration candidates on the five-minute baseline](results/5min-calibration-comparison.png)
+
+- **[View the comparison PNG](results/5min-calibration-comparison.png)** directly on GitHub.
+- **[Download the interactive HTML](results/5min-calibration-comparison.html)** and open it locally. Its slider changes the image-area threshold mapped to 100%, redraws the graph, and reports saturation. It is self-contained and uses the actual per-comparison measurements.
+
+| Mapping | Mean score | Comparisons at 100% | Full seconds at 100% | Seconds with mean ≥95% |
+| --- | ---: | ---: | ---: | ---: |
+| Original | 0.141 | 0% | 0 / 300 | 0 |
+| Ceiling at 20% changed area | 0.682 | 19.24% | 33 / 300 | 53 |
+| Ceiling at 25% changed area | 0.566 | 7.48% | 9 / 300 | 15 |
+| Ceiling at 35% changed area | 0.410 | 0.87% | 2 / 300 | 3 |
+| Smooth curve | 0.531 | 0% | 0 / 300 | 0 |
+
+“Full seconds at 100%” means every valid measurement in that second saturates. A partially saturated second can still average below 100%. Gray lines show individual comparisons and colored lines show one-second means; the red dotted line marks 95%.
+
+For filtered changed area `A` and a fixed ceiling `C`, the candidate score is:
+
+```python
+score = clip((A - 0.01) / (C - 0.01), 0, 1)
+```
+
+The smooth alternative starts with the original score `s`:
+
+```python
+score = 1.15 * s / (s + 0.15)
+```
+
+The smooth curve reaches 1 only at `s = 1`; it has no hard plateau on this baseline and peaks at a one-second average of 0.835. The 35% ceiling reaches 1 in two seconds, while preserving more headroom than the 20% and 25% candidates. Neither is selected as the new default yet.
+
+Mappings are applied **before** one-second averaging. Their constants do not depend on the input video's extrema, duration, or average. The recording is processed once with the original detector; mappings reuse the same measured changed areas. The detector was rerun for this experiment, and its original five-minute mean reproduced 0.140984.
+
+Both standing recordings remain zero for every candidate. The 15-second digging clip has mean scores of 0.246 originally, 0.859 at a 20% ceiling, 0.801 at 25%, 0.674 at 35%, and 0.666 with the smooth curve. These are calibration results on our baselines; the original plots and algorithm definition below remain available for comparison.
+
 ## How the calculation works
 
 Every measurement uses the same configuration:

@@ -1,224 +1,233 @@
 # Construction video motion graph
 
-This experiment turns silent video from cameras mounted on construction vehicles and tools into a motion score over time. Its purpose is to help viewers find active periods in long recordings, using a lightweight mathematical calculation on CPU.
+A runnable CPU pipeline for motion timelines from silent construction-equipment POV video. It produces one score per second, a clip summary, coverage information, and optional PNG/HTML exports.
 
-The first implementation uses Python, NumPy, and OpenCV. It requires no trained model or GPU. The score measures filtered visual change; camera movement, attachment movement, and moving shadows can all contribute.
+**Final configuration:** the selected smooth calibration curve, followed by stronger five-second temporal smoothing. This is the lowest panel from the reviewed five-minute comparison, with the stronger smoothing line selected. The raw detector and calibration values remain available in the JSON.
 
-## View the five-minute experiment
+## Quick start
 
-![Motion graph for the first 300 seconds of 5min.mp4](results/5min-motion.png)
+Use **Python 3.12** for the tested environment. Run these commands from `contech-motion`:
 
-- **[Open the PNG plot](results/5min-motion.png)** to view the graph directly on GitHub.
-- **[Open the HTML file](results/5min-motion.html)**, download the raw file, and open it in a browser. It contains the same Matplotlib plot as an embedded SVG and works offline. GitHub displays HTML source rather than running it as a webpage.
-- **[Source recording](5min.mp4)** used for the experiment.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-The horizontal axis covers **0–300 seconds**. Orange is the average score for each second; the faint gray line shows the underlying measurements, sampled five times per second. These are the actual results, without five-second aggregation or per-video min/max normalization.
-
-The source recording lasts approximately 305 seconds; this plot shows the requested first 300 seconds.
-
-| Measurement, first 300 seconds | Result |
-| --- | ---: |
-| Average motion score | 0.140984 |
-| Highest one-second average | 0.397896 |
-| Interval with the highest one-second average | 8–9 seconds |
-| Highest individual comparison score | 0.424440 |
-| Valid frame comparisons | 1,497 |
-
-## Selected smooth calibration on the original 15-second videos
-
-The lowest panel in the five-minute comparison uses the **smooth calibration curve**. We applied those same fixed parameters to fresh runs of `standing-1.mp4`, `standing-2.mp4`, and `digging-1.mp4`.
-
-![Selected smooth calibration on standing and digging baseline videos](results/15sec-smooth-baselines.png)
-
-- **[View the three-video plot](results/15sec-smooth-baselines.png)** directly on GitHub.
-- **[Download the HTML review](results/15sec-smooth-baselines.html)** and open it in a browser. It includes the plot, summary table, and a button to download the complete JSON with original measurements, calibrated samples, and smoothed per-second scores.
-
-The calibration is `1.15 * s / (s + 0.15)`, where `s = clip((A - 0.01) / 0.99, 0, 1)` and `A` is filtered changed-area fraction. All original detector parameters remain fixed. Calibration is applied to each comparison before one-second averaging.
-
-Three curves are shown for every video: unsmoothed, gentle `[1,2,1]/4`, and stronger `[1,2,3,2,1]/9`. There is no separate tuning or normalization for each clip.
-
-| Video | Calibrated mean over comparisons | Gentle peak second | Stronger minimum second | Stronger peak second |
-| --- | ---: | ---: | ---: | ---: |
-| Standing 1 | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
-| Standing 2 | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
-| Digging 1 | 0.6659 | 0.8369 | 0.5253 | 0.8373 |
-
-The three standing curves overlap exactly at zero. The initial 0.6 seconds is unscored; the first bucket has two valid comparisons. These standalone clips have no neighboring context, so temporal smoothing repeats the edge score at each true clip boundary. In the longer five-minute experiment, actual future footage supplies the context beyond the displayed 300-second boundary.
-
-Means over individual comparisons and means over displayed seconds differ slightly because the first second contains fewer comparisons. The JSON and HTML distinguish those statistics explicitly. The original 15-second detection outputs reproduced the previous calibration experiment.
-
-## Smoothing comparison
-
-After calibrating the one-second scores, we tested two weighted averages to reduce rapid fluctuations while preserving the raw data:
-
-| Version | Weights across consecutive seconds | Look-ahead |
-| --- | --- | ---: |
-| Unsmoothed | Current score | 0 seconds |
-| Gentle | `[1, 2, 1] / 4` | 1 second |
-| Stronger | `[1, 2, 3, 2, 1] / 9` | 2 seconds |
-
-- **[View the smoothing comparison plot](results/5min-smoothing-comparison.png)** on GitHub.
-- **[Download the interactive smoothing HTML](results/5min-smoothing-comparison.html)** and open it in a browser. Select any of the five calibration mappings and toggle the unsmoothed, gentle, and stronger curves. The page also downloads the complete comparison results as JSON.
-
-![Smoothing comparison on the baseline video](results/5min-smoothing-comparison.png)
-
-For the 35% calibration candidate:
-
-| Version | Average one-second score | Peak one-second score | Reduction in average absolute second-to-second change |
-| --- | ---: | ---: | ---: |
-| Unsmoothed | 0.4100 | 1.0000 | 0% |
-| Gentle | 0.4100 | 0.9902 | 47.2% |
-| Stronger | 0.4099 | 0.9645 | 60.9% |
-
-Here, averages weight each displayed one-second bucket equally. Earlier whole-clip statistics weight individual comparisons equally, so they differ slightly because the first bucket has only two valid comparisons.
-
-The smoothing stage operates after calibration. It does not modify detection, normalize each recording, or replace raw measurements. Gentle smoothing is the first candidate to review; stronger smoothing softens brief peaks more.
-
-The plot uses actual seconds 300 and 301 as future context rather than extrapolating the end of the displayed 0–300s interval. At the recording start, the first available value is repeated as left context. The first bucket still uses only its valid samples; the initial 0.6s is unscored.
-
-Reusable implementation: [smoothing.py](smoothing.py).
-
-```python
-from smoothing import smooth_scores, GENTLE, STRONGER
-
-gentle = smooth_scores(one_second_scores, GENTLE)
-stronger = smooth_scores(one_second_scores, STRONGER)
+python motion_graph.py digging-1.mp4 --output digging-result.json
 ```
 
-Supply neighboring scores when processing chunks, then trim the context. The helper preserves `None`/`NaN` gaps and smooths each continuous run independently, without bridging unavailable footage. Repeating edge values is appropriate only at true run boundaries, not at every upload boundary.
+Analysis requires only **NumPy and headless OpenCV**. OpenCV supplies the video decoder; the core does not invoke a separate FFmpeg executable. No model download or GPU is required.
 
-Checks cover constant and zero inputs, gap preservation, 0–1 bounds, input preservation, the exact three-point impulse response, chunk equivalence with context, agreement with the original measurements, and JavaScript syntax. These are presentation experiments; the detector defaults remain unchanged.
+To create images and a self-contained HTML report, install the optional Matplotlib dependency:
 
-## Calibration comparison on the baseline videos
+```bash
+pip install -r requirements-plot.txt
 
-The original graph underuses the 0–1 scale. This experiment keeps detection and the noise floor unchanged, then compares fixed score mappings on the first 300 seconds of `5min.mp4`. All four recordings in this folder are our calibration baselines.
-
-![Fixed calibration candidates on the five-minute baseline](results/5min-calibration-comparison.png)
-
-- **[View the comparison PNG](results/5min-calibration-comparison.png)** directly on GitHub.
-- **[Download the interactive HTML](results/5min-calibration-comparison.html)** and open it locally. Its slider changes the image-area threshold mapped to 100%, redraws the graph, and reports saturation. It is self-contained and uses the actual per-comparison measurements.
-
-| Mapping | Mean score | Comparisons at 100% | Full seconds at 100% | Seconds with mean ≥95% |
-| --- | ---: | ---: | ---: | ---: |
-| Original | 0.141 | 0% | 0 / 300 | 0 |
-| Ceiling at 20% changed area | 0.682 | 19.24% | 33 / 300 | 53 |
-| Ceiling at 25% changed area | 0.566 | 7.48% | 9 / 300 | 15 |
-| Ceiling at 35% changed area | 0.410 | 0.87% | 2 / 300 | 3 |
-| Smooth curve | 0.531 | 0% | 0 / 300 | 0 |
-
-“Full seconds at 100%” means every valid measurement in that second saturates. A partially saturated second can still average below 100%. Gray lines show individual comparisons and colored lines show one-second means; the red dotted line marks 95%.
-
-For filtered changed area `A` and a fixed ceiling `C`, the candidate score is:
-
-```python
-score = clip((A - 0.01) / (C - 0.01), 0, 1)
+python motion_graph.py 5min.mp4 \
+  --end-seconds 300 \
+  --output 5min-result.json \
+  --plot 5min-plot.png \
+  --html 5min-plot.html
 ```
 
-The smooth alternative starts with the original score `s`:
+Open the PNG directly, or download the HTML and open it in a browser. The HTML contains the plot and a button to download its embedded results JSON. It works offline. GitHub shows HTML source rather than executing it as a website.
+
+## Final baseline results
+
+Fresh output from the final script:
+
+| Input | Requested window | Mean final one-second score | Peak final one-second score |
+| --- | --- | ---: | ---: |
+| [standing-1.mp4](standing-1.mp4) | Entire 15s | 0.000000 | 0.000000 |
+| [standing-2.mp4](standing-2.mp4) | Entire 15s | 0.000000 | 0.000000 |
+| [digging-1.mp4](digging-1.mp4) | Entire 15s | 0.657294 | 0.837259 |
+| [5min.mp4](5min.mp4) | First 300s | 0.530966 | 0.808654 |
+
+- **[Final five-minute plot](results/final/5min.png)** and **[HTML report](results/final/5min.html)**.
+- Actual JSON outputs: [Standing 1](results/final/standing-1.json), [Standing 2](results/final/standing-2.json), [Digging 1](results/final/digging-1.json), [five-minute window](results/final/5min.json).
+- Reviewed three-video comparison: **[PNG](results/15sec-smooth-baselines.png)** / **[HTML](results/15sec-smooth-baselines.html)**. Those plots include both temporal smoothing options for comparison.
+
+![Final five-minute motion graph](results/final/5min.png)
+
+The long source is approximately 305 seconds. The final 0–300s result uses real footage after second 300 as smoothing context. The short standalone clips use repeated edge values where neighboring footage is unavailable.
+
+## Python API
+
+Run from this directory, or add this directory to your application's module search path:
 
 ```python
-score = 1.15 * s / (s + 0.15)
+from motion_graph import Config, analyze_video
+
+result = analyze_video("digging-1.mp4")
+
+clip_summary = result["score"]
+timeline_scores = result["scores"]
+coverage_and_raw_values = result["seconds"]
+
+# Optional review modes; default is "stronger".
+gentle = analyze_video("digging-1.mp4", Config(smoothing="gentle"))
+unsmoothed = analyze_video("digging-1.mp4", Config(smoothing="none"))
 ```
 
-The smooth curve reaches 1 only at `s = 1`; it has no hard plateau on this baseline and peaks at a one-second average of 0.835. The 35% ceiling reaches 1 in two seconds, while preserving more headroom than the 20% and 25% candidates. Neither is selected as the new default yet.
+`analyze_video` raises `ValueError` for unsupported or invalid media/timing and invalid requests. The CLI prints errors to stderr and exits with status 1; successful JSON is written to the requested file or stdout. Export errors also exit nonzero. Do not interpret a failed job as a zero-motion result.
 
-Mappings are applied **before** one-second averaging. Their constants do not depend on the input video's extrema, duration, or average. The recording is processed once with the original detector; mappings reuse the same measured changed areas. The detector was rerun for this experiment, and its original five-minute mean reproduced 0.140984.
+## Input contract
 
-Both standing recordings remain zero for every candidate. The 15-second digging clip has mean scores of 0.246 originally, 0.859 at a 20% ceiling, 0.801 at 25%, 0.674 at 35%, and 0.666 with the smooth curve. These are calibration results on our baselines; the original plots and algorithm definition below remain available for comparison.
+The input is a **local, completed, independently decodable video file**. Download an S3 object to temporary storage before calling the script. Keep object identity, camera identity, and capture timestamps in your orchestration layer.
 
-## How the calculation works
+- Tested real recordings: H.264, 640 × 480, 25 fps; approximately 15s and 305s.
+- Intended ingestion jobs: completed 15–60s chunks. The five-minute recording is a calibration and regression baseline.
+- Source must report a valid frame rate of at least 5 fps and monotonic decoded timestamps.
+- Frame selection uses decoded timestamps; malformed clocks and timestamp gaps larger than the sampling interval fail explicitly. Variable-frame-rate and other codec/camera combinations need integration checks before adoption.
+- Dimensions must remain stable. Validate recordings upstream; this is not a full media-integrity validator. When EOF is reached, a mismatch between decoded and declared frame count is rejected.
+- There is no audio processing, live-stream ingestion, camera timestamp OCR, person detection, or action classification in this task.
 
-Every measurement uses the same configuration:
+Window options refer to seconds relative to the **first decoded frame in the input file**. Explicit `--start-seconds` and `--end-seconds` must be whole seconds, with end greater than start. Without an explicit end, the actual final partial second is retained. Bounds beyond the recording fail rather than inventing coverage.
 
-1. Resize the frame to **320 pixels wide**, preserving its aspect ratio; smaller inputs are not enlarged.
-2. Convert to grayscale and apply a **5 × 5 Gaussian blur** to reduce fine image noise.
-3. Sample at **5 frames per second** and compare frames **0.6 seconds apart**.
-4. Subtract the median signed brightness difference to suppress approximately uniform additive exposure changes.
-5. Keep pixels with an absolute corrected brightness difference **greater than 12 out of 255**.
-6. Apply a **3 × 3 morphological opening** and discard connected changed regions smaller than **0.1% of the analyzed image**.
-7. Calculate the retained changed-area fraction, `A`.
-8. Apply a fixed **1% image-area noise allowance**:
+## Output contract
 
-```python
-score = max(0.0, min(1.0, (A - 0.01) / 0.99))
-```
+`schema_version` **`1.0`**; algorithm version **`contech-motion-1.0.0`**. The full output includes the numerical configuration. Keep both versions and the configuration with persisted results.
 
-A one-second result is the mean of valid comparisons in that second. A whole-clip result is the mean of all valid comparisons, so partial seconds receive the appropriate weight.
+| Field | Meaning |
+| --- | --- |
+| `source` | Filename, SHA-256 of the complete input, source dimensions, decoder clock origin, and decoding metadata |
+| `config` | Detection/calibration settings, smoothing mode, and smoothing weights |
+| `window` | Input-relative start/end, output duration, and unscored prefix |
+| `scores` | Final score for each one-second output bucket, in order; `null` means unavailable |
+| `seconds` | Detailed final/raw scores, timing, sample counts, and coverage for each bucket |
+| `score` | Arithmetic mean of available **final one-second scores**, useful as a clip summary |
+| `peak_score` | Maximum final one-second score |
+| `calibrated_sample_mean` | Mean calibrated score across individual valid comparisons, before temporal smoothing |
+| `sample_count` | Number of valid comparisons inside the requested window; excludes context |
+| `elapsed_seconds` | Local analysis duration, including decoding and checksum; excludes orchestration and plotting |
+| `samples` | Optional comparison-level diagnostics when `--include-samples` is supplied |
 
-### What the values mean
+Each `seconds` entry contains:
 
-- **0** means no change survived the filters and fixed noise allowance. It does not mean the original frames are identical.
-- Values between **0 and 1** represent increasing image area with qualifying visual changes.
-- **1** is the upper bound of the fixed scale, not the largest value observed in a particular recording.
+- `start_seconds`, `end_seconds`: half-open interval `[start, end)`, relative to the requested output window. The last bucket may be shorter than one second.
+- `input_start_seconds`: bucket start relative to the input file.
+- `score`: final temporally smoothed score used for the viewer graph.
+- `calibrated_score`: smooth-calibrated one-second average **before temporal smoothing**.
+- `detector_score`: one-second average of the original filtered-area score.
+- `changed_area_fraction`: one-second average retained changed area before the detector's area deadband.
+- `sample_count`, `expected_sample_count`, `coverage_fraction`: valid and expected sample counts, and their ratio. This is sampling coverage, not model confidence.
+- `smoothing_edge_padded`: whether missing neighboring bucket context was replaced with the nearest valid edge value.
 
-For example, a score near 0.25 corresponds to approximately a quarter of the analyzed image showing qualifying change, adjusted for the noise allowance. It is not a productivity percentage, a movement probability, or a physical speed measurement.
+A mean over comparisons can differ from a mean over seconds because a partially measured second contains fewer comparisons. For the standalone digging clip, `calibrated_sample_mean` is 0.665918 while the final smoothed `score` is 0.657294. Do not mix these statistics.
 
-Parameters remain fixed across recordings. There is no adjustment based on each video's minimum, maximum, or average. Changing the parameters changes the measurement definition and should produce a new algorithm/configuration version.
+### Mapping to the website clock
 
-## Initial 15-second checks
-
-All three initial recordings are 640 × 480 at 25 fps. They used the same settings as the five-minute experiment.
-
-| Recording | Whole-clip score | Highest one-second average | Mean retained changed area before the final noise allowance |
-| --- | ---: | ---: | ---: |
-| [digging-1.mp4](digging-1.mp4) | 0.245730 | 0.408996 | 25.327293% |
-| [standing-1.mp4](standing-1.mp4) | 0.000000 | 0.000000 | 0.000000% |
-| [standing-2.mp4](standing-2.mp4) | 0.000000 | 0.000000 | 0.019495% |
-
-Both standing clips contain image differences. Filtering removes the small changes in `standing-1`; `standing-2` retains a tiny changed area, but every comparison stays below the fixed 1% allowance. Their zero scores are therefore intentional consequences of the filtering.
-
-These clips are development examples, not an independent evaluation set.
-
-## Different recording lengths and chunk boundaries
-
-The per-comparison calculation is independent of the total recording length. A 15-second input and a 60-second input use the same time interval and thresholds.
-
-For the website timeline, retain **one score per second** rather than replacing each arbitrarily sized upload with one number. A whole-upload average can dilute brief activity differently depending on upload length.
-
-Each comparison needs 0.6 seconds of preceding footage:
-
-- Without preceding context, the initial **0.6 seconds is unmeasured**, not zero.
-- In these experiments, the first second contains two valid comparisons; later complete seconds contain five.
-- For continuous chunk processing, prepend 0.6 seconds from the previous recording, exclude that context from the output period, and preserve the shared 5 Hz sampling grid.
-- Do not compare across a genuine recording gap. Mark unavailable coverage explicitly.
-
-A separate engineering check compared a constructed 60-second recording against four 15-second jobs with preceding context. Their per-comparison scores matched exactly. The fixture repeated existing footage and is not additional real-world validation.
-
-## Limitations to test next
-
-This baseline deliberately trades sensitivity to tiny changes for a quieter graph. Small or slow genuine movement can be suppressed along with noise.
-
-- Strong engine vibration or camera shake may produce false activity.
-- Large areas of wind-blown vegetation, changing shadows, rain, or dust may contribute.
-- Low-contrast movement can be missed; grayscale also loses color-only differences.
-- Median brightness correction can suppress broad, approximately uniform changes.
-- Equal physical actions can score differently under different viewpoints and textures.
-- Identical images alone cannot distinguish a frozen recording from a perfectly still scene.
-- The calculation does not identify digging, loading, idling, or productive work.
-
-Evaluate more parked-but-vibrating, windy, travelling, nighttime, and slow-action footage before adding stabilization, region masks, or optical flow. Add complexity in response to measured failures.
-
-## Files and implementation status
+If the first decoded frame has upstream UTC time `T`, the absolute time of a bucket is:
 
 ```text
-contech-motion/
-├── README.md
-├── smoothing.py
-├── 5min.mp4
-├── digging-1.mp4
-├── standing-1.mp4
-├── standing-2.mp4
-└── results/
-    ├── 5min-motion.png
-    ├── 5min-motion.html
-    ├── 5min-calibration-comparison.png
-    ├── 5min-calibration-comparison.html
-    ├── 5min-smoothing-comparison.png
-    ├── 5min-smoothing-comparison.html
-    ├── 15sec-smooth-baselines.png
-    └── 15sec-smooth-baselines.html
+T + window.input_start_seconds + seconds[i].start_seconds
 ```
 
-The files currently committed here are input recordings, plot exports, and a reusable NumPy smoothing helper. The Python analysis and plotting code was run during the experiment; it is not yet packaged as a runnable application in this folder. There is no deployed Lambda service in this repository.
+The AI code does not establish camera clock accuracy. The backend supplies that mapping and keeps different camera clocks aligned.
 
-The analysis used NumPy and OpenCV; plot generation used Matplotlib. Processing the approximately five-minute source took **6.76 seconds in the development environment**, including decoding. This excludes download time and is not an AWS Lambda benchmark or cost estimate.
+When joining chunk outputs, join timestamped buckets rather than averaging arbitrarily sized upload summaries. Use the same configuration and a shared one-second/5 Hz sampling grid for every chunk.
+
+## Final algorithm and fixed parameters
+
+1. Resize to width 320, preserving aspect ratio and avoiding upscaling.
+2. Convert to grayscale and apply 5 × 5 Gaussian blur.
+3. Sample at 5 Hz; compare frames three samples apart (nominally 0.6s).
+4. Subtract the median signed brightness difference to reduce approximately uniform additive exposure changes.
+5. Threshold absolute corrected changes at greater than 12 brightness levels out of 255.
+6. Apply 3 × 3 morphological opening; discard connected changed regions below 0.1% of the analyzed image.
+7. Let `A` be the retained changed-area fraction. Compute the original detector score:
+
+```python
+s = clip((A - 0.01) / 0.99, 0, 1)
+```
+
+8. Apply the selected smooth calibration to **each comparison**:
+
+```python
+calibrated = 1.15 * s / (s + 0.15)
+```
+
+9. Average valid calibrated comparisons within each one-second bucket.
+10. Apply the default centered five-second temporal kernel:
+
+```python
+final[t] = (
+    calibrated_seconds[t - 2]
+    + 2 * calibrated_seconds[t - 1]
+    + 3 * calibrated_seconds[t]
+    + 2 * calibrated_seconds[t + 1]
+    + calibrated_seconds[t + 2]
+) / 9
+```
+
+The optional gentle kernel is `[1, 2, 1] / 4`; `none` omits temporal smoothing. There is no per-video minimum/maximum normalization or filename-specific behavior. Default constants apply equally to every recording. Custom Python `Config` values are persisted in the output; a changed configuration defines a different measurement scale and should be versioned by your pipeline.
+
+The original 1% area noise allowance explains why the standing clips reach exactly zero: small image differences exist, but do not survive the combined filters and allowance. A final score of 1 is an upper bound, not a target every recording must reach. The smooth calibration avoids hard clipping below the original detector's ceiling.
+
+## Chunk context: important for backend integration
+
+Detection needs 0.6s of preceding footage. Default temporal smoothing additionally needs two neighboring one-second buckets on each side. Supplying only 0.6s of prefix fixes detection continuity but is insufficient for the final smoothed graph.
+
+For a **60-second target chunk**, supply **3 seconds of preceding video and 2 seconds of following video**, on the same sampling clock. This creates a 65-second input:
+
+```text
+Input:  [3s preceding context][60s target][2s following context]
+Output:                       [60s target]
+```
+
+```bash
+python motion_graph.py chunk-with-context.mp4 \
+  --start-seconds 3 --end-seconds 63 \
+  --output target-motion.json
+```
+
+The script retains available context for calculation, then returns only the requested 60 seconds. Bucket times start at zero in the output, and `window.input_start_seconds` remains 3. Explicit requested windows automatically decode up to two seconds beyond their end for the default smoothing when footage is available.
+
+For the first or last recording of a continuous run, available edge values are repeated for smoothing. These buckets are marked `smoothing_edge_padded`. Without prior video, the initial 0.6s remains unmeasured; the first bucket contains two comparisons rather than five. It is not filled with zero-motion measurements.
+
+The reusable [smoothing.py](smoothing.py) helper preserves `None`/`NaN` gaps and processes continuous runs independently. The video analyzer rejects large timestamp discontinuities; orchestration should split recordings at actual gaps. Never prepend context from across an outage. Do not reset smoothing at every upload boundary.
+
+## Command reference
+
+```text
+python motion_graph.py VIDEO
+  --output PATH          JSON file; omit to print JSON to stdout
+  --plot PATH            Optional PNG plot; requires requirements-plot.txt
+  --html PATH            Optional offline HTML with embedded results JSON
+  --smoothing MODE       stronger (default), gentle, or none
+  --start-seconds N      Whole-second output start in the input; default 0
+  --end-seconds N        Whole-second output end; default actual input end
+  --include-samples      Include comparison timestamps and diagnostic values
+```
+
+The CLI refuses output paths that would overwrite the input recording or collide with another output format. It creates missing output directories. Passing an output path replaces that result file; use unique job paths in orchestration.
+
+## Validation and reproducibility
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+Checks cover the original four real baseline recordings, exact agreement with reviewed final values, chunk processing with context in all smoothing modes, noise suppression, local motion, partial coverage, invalid inputs/windows, unsupported low frame rates, short recordings, smoothing gaps, CLI JSON/PNG/HTML exports, and protection against overwriting an input.
+
+Comparison history is preserved:
+
+- Original detector: [PNG](results/5min-motion.png), [HTML](results/5min-motion.html).
+- Calibration candidates: [PNG](results/5min-calibration-comparison.png), [HTML](results/5min-calibration-comparison.html).
+- Smoothing candidates: [PNG](results/5min-smoothing-comparison.png), [HTML](results/5min-smoothing-comparison.html).
+- Selected calibration on all short baselines: [PNG](results/15sec-smooth-baselines.png), [HTML](results/15sec-smooth-baselines.html).
+
+These recordings are calibration baselines. They establish repeatability of the chosen behavior, not accuracy on every construction site or camera installation.
+
+## Handoff responsibilities and limits
+
+**AI deliverable:** fixed CPU algorithm, calibrated and smoothed outputs, coverage/provenance, reproducible baseline results, plotting exports, and tests.
+
+**Backend/data integration:** download and validate completed recordings; supply chronological context; attach project/camera/capture-time metadata; handle retries and failures; store JSON and publish timestamped scores to the website. The inputs and outputs are ordinary local files/Python dictionaries. No AWS credentials or network access are required by the analysis itself.
+
+**Frontend:** draw `seconds[].score` on the source timeline, show unavailable coverage distinctly, and preserve the raw values for debugging. Use coverage and edge flags when presenting a recording boundary.
+
+For Lambda, package the pinned analysis dependencies for the chosen runtime/architecture, download to temporary storage, call `analyze_video`, and persist results to S3 or your backend. A bare return value from an asynchronously S3-triggered Lambda is not result delivery. AWS packaging, IAM, orchestration, deployment, and an AWS throughput/cost benchmark remain integration work for the platform team.
+
+This measures visual change, not construction productivity or a named action. Travel, rotation, shadows, wind, rain, dust, and vibration may contribute. Small or slow true movement may be suppressed. Uniform brightness correction and grayscale each discard some information. Viewpoint and texture affect the score. Identical frames alone cannot distinguish a frozen camera from a still scene.
